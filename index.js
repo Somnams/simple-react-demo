@@ -1,6 +1,6 @@
 const TEXT_ELEMENT = 'text';
 
-const isProperty = key => key !== 'chidlren';
+const isProperty = key => key !== 'children';
 
 /**
  * @param {string} type 
@@ -34,7 +34,7 @@ function render(element, container) {
     Object.keys(props).filter(isProperty).forEach(p => {
         dom[p] = props[p];
     });
-    props.children.forEach(c => {
+    props.children.length && props.children.forEach(c => {
         render(c, dom);
     });
 
@@ -57,6 +57,7 @@ const OwnReact = {
 };
 
 const root = document.getElementById('root');
-const element = OwnReact.createElement('h1', {}, 'Own React Demo')
-
+// const element = OwnReact.createElement('h1', {}, 'Own React Demo')
+/** @jsx OwnReact.createElement */
+const element = <h1>Own React Demo</h1>
 OwnReact.render(element, root);
