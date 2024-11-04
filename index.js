@@ -1,6 +1,8 @@
 const TEXT_ELEMENT = 'text';
 
 const isProperty = key => key !== 'children';
+const isNew = (prev, next) => key => prev[key] !== next[key];
+const isGone = (prev, next) => key => !(key in next);
 
 /**
  * @param {string} type 
@@ -77,12 +79,21 @@ function render(element, container) {
 }
 
 /**
- * @param {FiberElement['dom']} parentDom 
+ * @param {FiberElement['dom']} dom 
  * @param {FiberElement['props']} props 
  * @param {FiberElement['props']} oldFiber 
  */
-function updateDom(parentDom, props, oldProps) {
-    // TODO update real dom
+function updateDom(dom, props, oldProps) {
+    // * remove old properties
+    Object.keys(oldProps)
+    .filter(isProperty)
+    .filter(isGone(oldProps, props))
+    .forEach(p => dom[p] = '');
+    // * set new or changed properties
+    Object.keys(props)
+    .filter(isProperty)
+    .filter(isNew(oldProps, props))
+    .forEach(p => dom[p] = props[p]);
 }
 
 /**
