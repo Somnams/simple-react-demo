@@ -1,6 +1,11 @@
-const TEXT_ELEMENT = 'text';
+const TEXT_ELEMENT = 'TEXT_ELEMENT';
 
-const isProperty = key => key !== 'children';
+/**
+ * @param {string} key 
+ * @returns boolean
+ */
+const isEvent = key => key.startsWith('on');
+const isProperty = key => key !== 'children' && !isEvent(key);
 const isNew = (prev, next) => key => prev[key] !== next[key];
 const isGone = (prev, next) => key => !(key in next);
 
@@ -39,8 +44,7 @@ function createElement(type, props, ...children) {
  */
 function createDom(fiber) {
     const dom = fiber.type === TEXT_ELEMENT ? document.createTextNode("") : document.createElement(fiber.type);
-    Object.keys(fiber.props).filter(isProperty).forEach(p => dom[p] = fiber.props[p]);
-
+    updateDom(dom, fiber.props, {});
     return dom;
 }
 
@@ -84,16 +88,32 @@ function render(element, container) {
  * @param {FiberElement['props']} oldFiber 
  */
 function updateDom(dom, props, oldProps) {
+    // * remove old event handler
+    Object.keys(oldProps)
+    .filter(isEvent)
+    .filter(key => !(key in props)|| isNew(oldProps, props)(key))
+    .forEach(name => {
+        const eventType = name.toLowerCase().slice(2);
+        document.removeEventListener(eventType, oldProps[name]);
+    })
     // * remove old properties
     Object.keys(oldProps)
     .filter(isProperty)
     .filter(isGone(oldProps, props))
-    .forEach(p => dom[p] = '');
+    .forEach(p =>dom[p] = '');
     // * set new or changed properties
     Object.keys(props)
     .filter(isProperty)
     .filter(isNew(oldProps, props))
-    .forEach(p => dom[p] = props[p]);
+    .forEach(p => {dom[p] = props[p]});
+    // * add new event handler
+    Object.keys(props)
+    .filter(isEvent)
+    .filter(isNew(oldProps, props))
+    .forEach(name => {
+        const eventType = name.toLowerCase().slice(2);
+        document.addEventListener(eventType, props[name]);
+    })
 }
 
 /**
@@ -110,10 +130,9 @@ function commitWork(fiber) {
         parentDom.appendChild(fiber.dom);
     }
     if (fiber.effectTag === 'UPDATE' && fiber.dom !== null)  {
-        updateDom(fiber.parent.dom, fiber.props, fiber.alternate.props);
+        updateDom(fiber.dom, fiber.props, fiber.alternate.props);
     }
 
-    parentDom.appendChild(fiber.dom);
     commitWork(fiber.child);
     commitWork(fiber.sibling);
 }
@@ -166,7 +185,7 @@ function performUnitOfWork(fiber) {
         if (nextFiber.sibling) {
             return nextFiber.sibling;
         }
-        nextFiber = fiber.parent;
+        nextFiber = nextFiber.parent;
     }
 }
 
@@ -178,10 +197,10 @@ function reconcileChildren(wipFiber, elements) {
     let index = 0;
     let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
     let prevSibling = null;
-    while (index < elements.length || oldFiber !== null) {
+    while (index < elements.length || oldFiber != null) {
         const element = elements[index];
         let newFiber = null;
-        const sameType = oldFiber?.type === element?.type;
+        const sameType = oldFiber && element && element.type === oldFiber.type;
         if (sameType) {
             // * Update
             newFiber = {
@@ -213,8 +232,8 @@ function reconcileChildren(wipFiber, elements) {
         }
 
         if (index === 0) {
-            prevSibling = null;
-        } else {
+            wipFiber.child = newFiber;
+        } else if(element) {
             prevSibling.sibling = newFiber;
         }
         prevSibling = newFiber;
@@ -227,8 +246,21 @@ const OwnReact = {
     render
 };
 
-const root = document.getElementById('root');
-// const element = OwnReact.createElement('h1', {}, 'Own React Demo')
 /** @jsx OwnReact.createElement */
-const element = <h1>Own React Demo</h1>
-OwnReact.render(element, root);
+const container = document.getElementById("root");
+
+const updateValue = e => {
+  rerender(e.target.value);
+}
+
+const rerender = value => {
+  const element = (
+    <div>
+      <input onInput={updateValue} value={value} />
+      <h2>Hi, {value}</h2>
+    </div>
+  )
+  OwnReact.render(element, container);
+}
+
+rerender("Own React Demo");
