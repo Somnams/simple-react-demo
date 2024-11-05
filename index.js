@@ -34,6 +34,7 @@ function createElement(type, props, ...children) {
 /**
  * @typedef {ReactElement & {
  * dom: HTMLDivElement,
+ * hooks: Array<{state: any, queue: any[]}>,
  * alternate: FiberElement,
  * effectTag: "UPDATE"| "DELETION" |"PLACEMENT",
  * parent: FiberElement,
@@ -65,6 +66,9 @@ let wipRoot = null;
 let currentRoot = null;
 /** @type {Array<FiberElement> | null} */
 let deletions = null;
+/** @type{FiberElement} */
+let wipFiber = null;
+let hookIndex = null;
 
 /**
  * @param {ReactElement} element 
@@ -194,10 +198,38 @@ function updateHostComponent(fiber) {
     reconcileChildren(fiber, elements);
 }
 
+function useState(initial) {
+    const oldHook = wipFiber.alternate && wipFiber.alternate.hooks && wipFiber.alternate.hooks[hookIndex];
+    const hook = {
+        state: oldHook ? oldHook.state : initial,
+        queue: []
+     };
+    const actions = oldHook ? oldHook.queue : [];
+    actions.forEach(action => {
+        hook.state = action(hook.state);
+    });
+    const setState = action => {
+        hook.queue.push(action);
+        wipRoot = {
+            dom: currentRoot.dom,
+            props: currentRoot.props,
+            alternate: currentRoot
+        };
+        nextUnitOfWork = wipRoot;
+        deletions = [];
+    }
+    wipFiber.hooks.push(hook);
+    hookIndex++;
+    return [hook.state, setState];
+}
+
 /**
  * @param {FiberElement} fiber
  */
 function updateFunctionComponent(fiber) {
+    wipFiber = fiber;
+    hookIndex = 0;
+    wipFiber.hooks = [];
     const functionChildren = [fiber.type(fiber.props)];
     reconcileChildren(fiber, functionChildren);
 }
@@ -285,15 +317,24 @@ function reconcileChildren(wipFiber, elements) {
 
 const OwnReact = {
     createElement,
-    render
+    render,
+    useState
 };
 
 
 /** @jsx OwnReact.createElement */
 const container = document.getElementById("root");
 
-function App(props) {
-    return <h1>Hi, {props.name}</h1>
+// function App(props) {
+//     return <h1>Hi, {props.name}</h1>
+// }
+// const element = <App name="Own React Demo"/>;
+function Counter() {
+    const [count, setCount] = OwnReact.useState(0);
+    return <div>
+        count: {count}
+        <button onClick={() => setCount(c => c + 1)}>plus one</button>
+        </div>
 }
-const element = <App name="Own React Demo"/>;
+const element = <Counter/>
 OwnReact.render(element, container);
