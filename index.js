@@ -13,7 +13,7 @@ const isGone = (prev, next) => key => !(key in next);
  * @param {string} type 
  * @param {Record<string, any>} props 
  * @param  {...any} children 
- * @typedef {{type: string;
+ * @typedef {{type: string|Function;
     props: {
         children: any[];
     }}} ReactElement
@@ -90,30 +90,42 @@ function render(element, container) {
 function updateDom(dom, props, oldProps) {
     // * remove old event handler
     Object.keys(oldProps)
-    .filter(isEvent)
-    .filter(key => !(key in props)|| isNew(oldProps, props)(key))
-    .forEach(name => {
-        const eventType = name.toLowerCase().slice(2);
-        document.removeEventListener(eventType, oldProps[name]);
-    })
+        .filter(isEvent)
+        .filter(key => !(key in props) || isNew(oldProps, props)(key))
+        .forEach(name => {
+            const eventType = name.toLowerCase().slice(2);
+            document.removeEventListener(eventType, oldProps[name]);
+        })
     // * remove old properties
     Object.keys(oldProps)
-    .filter(isProperty)
-    .filter(isGone(oldProps, props))
-    .forEach(p =>dom[p] = '');
+        .filter(isProperty)
+        .filter(isGone(oldProps, props))
+        .forEach(p => dom[p] = '');
     // * set new or changed properties
     Object.keys(props)
-    .filter(isProperty)
-    .filter(isNew(oldProps, props))
-    .forEach(p => {dom[p] = props[p]});
+        .filter(isProperty)
+        .filter(isNew(oldProps, props))
+        .forEach(p => { dom[p] = props[p] });
     // * add new event handler
     Object.keys(props)
-    .filter(isEvent)
-    .filter(isNew(oldProps, props))
-    .forEach(name => {
-        const eventType = name.toLowerCase().slice(2);
-        document.addEventListener(eventType, props[name]);
-    })
+        .filter(isEvent)
+        .filter(isNew(oldProps, props))
+        .forEach(name => {
+            const eventType = name.toLowerCase().slice(2);
+            document.addEventListener(eventType, props[name]);
+        })
+}
+
+/**
+ * @param {FiberElement} fiber 
+ * @param {HTMLDivElement} domParent 
+ */
+function commitDeletion(fiber, domParent) {
+    if (fiber.dom) {
+        domParent.removeChild(fiber.dom);
+    } else {
+        commitDeletion(fiber.child, domParent);
+    }
 }
 
 /**
@@ -121,15 +133,21 @@ function updateDom(dom, props, oldProps) {
  */
 function commitWork(fiber) {
     if (!fiber) return;
-    const parentDom = fiber.parent.dom;
+ 
+    let parentDomFiber = fiber.parent;
+    // ? function component => dom: null
+    while (!parentDomFiber.dom) {
+        parentDomFiber = parentDomFiber.parent;
+    }
+    const parentDom = parentDomFiber.dom;
 
     if (fiber.effectTag === 'DELETION') {
-        parentDom.removeChild(fiber.dom)
+        commitDeletion(fiber, parentDom);
     }
     if (fiber.effectTag === 'PLACEMENT' && fiber.dom !== null) {
         parentDom.appendChild(fiber.dom);
     }
-    if (fiber.effectTag === 'UPDATE' && fiber.dom !== null)  {
+    if (fiber.effectTag === 'UPDATE' && fiber.dom !== null) {
         updateDom(fiber.dom, fiber.props, fiber.alternate.props);
     }
 
@@ -168,14 +186,38 @@ requestIdleCallback(workLoop);
 /**
  * @param {FiberElement} fiber 
  */
-function performUnitOfWork(fiber) {
-    // * 1. add dom node
+function updateHostComponent(fiber) {
     if (!fiber.dom) {
         fiber.dom = createDom(fiber);
     }
-    // * 2. create new fibers
     const elements = fiber.props.children;
     reconcileChildren(fiber, elements);
+}
+
+/**
+ * @param {FiberElement} fiber
+ */
+function updateFunctionComponent(fiber) {
+    const functionChildren = [fiber.type(fiber.props)];
+    reconcileChildren(fiber, functionChildren);
+}
+/**
+ * @param {FiberElement} fiber 
+ */
+function performUnitOfWork(fiber) {
+    // * 1. add dom node
+    // * function components is different :
+    // ** 1> the fiber from a function component doesn't have a dom node
+    // ** 2> and the children come from running the function instead of getting them directly from the props
+
+    // ? createElement({type: (function App() {}), ....})
+    const isFunctionComponent = fiber.type instanceof Function;
+    // * 2. create new fibers
+    if (isFunctionComponent) {
+        updateFunctionComponent(fiber)
+    } else {
+        updateHostComponent(fiber)
+    }
     // * 3. return the next unit of work
     if (fiber.child) {
         return fiber.child;
@@ -233,7 +275,7 @@ function reconcileChildren(wipFiber, elements) {
 
         if (index === 0) {
             wipFiber.child = newFiber;
-        } else if(element) {
+        } else if (element) {
             prevSibling.sibling = newFiber;
         }
         prevSibling = newFiber;
@@ -246,21 +288,12 @@ const OwnReact = {
     render
 };
 
+
 /** @jsx OwnReact.createElement */
 const container = document.getElementById("root");
 
-const updateValue = e => {
-  rerender(e.target.value);
+function App(props) {
+    return <h1>Hi, {props.name}</h1>
 }
-
-const rerender = value => {
-  const element = (
-    <div>
-      <input onInput={updateValue} value={value} />
-      <h2>Hi, {value}</h2>
-    </div>
-  )
-  OwnReact.render(element, container);
-}
-
-rerender("Own React Demo");
+const element = <App name="Own React Demo"/>;
+OwnReact.render(element, container);
